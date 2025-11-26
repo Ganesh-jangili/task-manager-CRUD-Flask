@@ -3,6 +3,7 @@ from config import mongo
 from utils.profile_completion import clct_profile_completion
 import bcrypt
 from bson import ObjectId
+from datetime import datetime, timezone
 
 users_bp = Blueprint("users_bp", __name__)
 #................................................................................................
@@ -19,7 +20,9 @@ def create_user():
         "pincode": data.get("pincode", ""),
         "state": data.get("state", ""),
         "country": data.get("country", ""),
-        "phone": data.get("phone", "")
+        "phone": data.get("phone", ""),
+        "created_at": datetime.now(timezone.utc),
+        "updated_at": datetime.now(timezone.utc)
     }
     user["profile_completion"] = clct_profile_completion(user)
     inserted = mongo.db.users.insert_one(user)
@@ -51,13 +54,16 @@ def get_all_users():
 @users_bp.route("/updateUser/<user_id>", methods=["PATCH"])
 def update_user(user_id):
     data=request.json
-    mongo.db.users.update_one({"_id": ObjectId(user_id)}, {"$set": data})
-    user = mongo.db.users.find_one({"_id": ObjectId(user_id)})
-
-    updated_completion = clct_profile_completion(user)
-    mongo.db.users.update_one({"_id": ObjectId(user_id)}, {"$set": {"profile_completion": updated_completion}})
-    user["_id"] = str(user["_id"])
-    return {"message": "User updated successfully", "user": user}, 200
+    user=mongo.db.users.find_one({"_id": ObjectId(user_id)})
+    if not user:
+        return {"message": "User not found"}, 404
+    merged_data = {**user, **data}
+    updated_completion = clct_profile_completion(merged_data)
+    update_fields = {**data, "profile_completion": updated_completion, "updated_at": datetime.now(timezone.utc)}
+    mongo.db.users.update_one({"_id": ObjectId(user_id)}, {"$set": update_fields})
+    updated_user = mongo.db.users.find_one({"_id": ObjectId(user_id)})
+    updated_user["_id"] = str(updated_user["_id"])
+    return {"message": "User updated successfully", "user": updated_user}, 200
 #................................................................................................
 #to get profile completion percentage
 @users_bp.route("/profileCompletion/<user_id>", methods=["GET"])

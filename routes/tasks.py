@@ -1,6 +1,8 @@
 from flask import Blueprint, request, jsonify
 from config import mongo
 from bson import ObjectId
+from datetime import datetime, timezone
+from pymongo import ReturnDocument
 
 tasks_bp = Blueprint("tasks_bp", __name__)
 #................................................................................................
@@ -15,7 +17,9 @@ def create_task():
         "title": data["title"],
         "description": data.get("description", ""),
         "status": data.get("status", "pending"),
-        "user_id": data["user_id"]
+        "user_id": data["user_id"],
+        "created_at": datetime.now(timezone.utc),
+        "updated_at": datetime.now(timezone.utc)
     }
     inserted = mongo.db.tasks.insert_one(task)
     task["_id"] = str(inserted.inserted_id)
@@ -47,11 +51,16 @@ def get_task(task_id):
 @tasks_bp.route("/updateTask/<task_id>", methods=["PATCH"])
 def update_task(task_id):
     data=request.json
-    updated=mongo.db.tasks.update_one({"_id": ObjectId(task_id)}, {"$set": data},return_document=True)
-    if not updated:
+    updated = mongo.db.tasks.find_one_and_update(
+        {"_id": ObjectId(task_id)},
+        {"$set": {**data, "updated_at": datetime.now(timezone.utc)}},
+        return_document=ReturnDocument.AFTER
+    )
+    if updated is None:
         return {"message": "Task not found"}, 404
     updated["_id"] = str(updated["_id"])
-    updated["user_id"] = str(updated["user_id"])
+    if "user_id" in updated:
+        updated["user_id"] = str(updated["user_id"])
     return {"message": "Task updated successfully", "task": updated}, 200
 #..................................................................................................
 #to delete a task
